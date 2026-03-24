@@ -42,9 +42,31 @@ API Gateway (REST)
 npm install
 cp .env.example .env
 
-# Start local API (uses serverless-offline; DynamoDB Local recommended)
+# 1. Start DynamoDB Local (requires Docker)
+docker run -p 8000:8000 amazon/dynamodb-local
+
+# 2. Create tables (run in a new terminal)
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb create-table \
+  --table-name task-management-api-users-dev \
+  --attribute-definitions AttributeName=userId,AttributeType=S AttributeName=email,AttributeType=S \
+  --key-schema AttributeName=userId,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --global-secondary-indexes '[{"IndexName":"EmailIndex","KeySchema":[{"AttributeName":"email","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]' \
+  --endpoint-url http://localhost:8000 --region localhost
+
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb create-table \
+  --table-name task-management-api-tasks-dev \
+  --attribute-definitions AttributeName=userId,AttributeType=S AttributeName=taskId,AttributeType=S AttributeName=status,AttributeType=S AttributeName=dueDate,AttributeType=S \
+  --key-schema AttributeName=userId,KeyType=HASH AttributeName=taskId,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST \
+  --global-secondary-indexes '[{"IndexName":"StatusIndex","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"status","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},{"IndexName":"DueDateIndex","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"},{"AttributeName":"dueDate","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]' \
+  --endpoint-url http://localhost:8000 --region localhost
+
+# 3. Start the API server
 npm run dev
 ```
+
+The API runs at `http://localhost:3000`. Open `public/index.html` in your browser for the frontend UI.
 
 ### Deploy to AWS
 
@@ -115,8 +137,8 @@ All task endpoints require `Authorization: Bearer <accessToken>` header.
 |-------|------|----------|--------|
 | `title` | string | ✅ | 1–200 chars |
 | `description` | string | | max 2000 chars |
-| `status` | string | | `todo` `in_progress` `done` `cancelled` |
-| `priority` | string | | `low` `medium` `high` `urgent` |
+| `status` | string | | `todo` `in-progress` `completed` |
+| `priority` | string | | `low` `medium` `high` |
 | `dueDate` | string | | `YYYY-MM-DD` |
 | `tags` | string[] | | max 10 items |
 
@@ -166,7 +188,7 @@ Searches across `title`, `description`, and `tags`.
 | `title` | String | |
 | `status` | String | GSI sort key (StatusIndex) |
 | `dueDate` | String | GSI sort key (DueDateIndex); `"none"` when null |
-| `priority` | String | `low` `medium` `high` `urgent` |
+| `priority` | String | `low` `medium` `high` |
 | `tags` | List | |
 | `createdAt` | String | ISO 8601 |
 | `updatedAt` | String | ISO 8601 |
@@ -189,6 +211,8 @@ task-api/
 ├── serverless.yml          # Infrastructure as code
 ├── package.json
 ├── .env.example
+├── public/
+│   └── index.html          # Browser frontend UI
 ├── src/
 │   ├── handlers/
 │   │   ├── auth.js         # register / login / refresh
@@ -205,7 +229,8 @@ task-api/
 │       └── logger.js       # Structured logging (CloudWatch)
 └── tests/
     ├── auth.test.js
-    └── tasks.test.js
+    ├── tasks.test.js
+    └── authorizer.test.js
 ```
 
 ---
@@ -218,6 +243,8 @@ task-api/
 | `USERS_TABLE` | DynamoDB users table name |
 | `JWT_SECRET` | Secret for signing JWTs (use SSM in prod) |
 | `STAGE` | `dev` / `prod` |
+| `IS_OFFLINE` | Set by serverless-offline; switches DynamoDB to localhost:8000 |
+| `AWS_REGION` | AWS region (default: `us-east-1`) |
 
 ---
 
