@@ -1,0 +1,206 @@
+service: task-management-api
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 10
+  environment:
+    TASKS_TABLE: ${self:service}-tasks-${self:provider.stage}
+    USERS_TABLE: ${self:service}-users-${self:provider.stage}
+    JWT_SECRET: ${ssm:/task-api/${self:provider.stage}/jwt-secret, 'local-dev-secret-change-in-prod'}
+    STAGE: ${self:provider.stage}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - !GetAtt TasksTable.Arn
+            - !Sub '${TasksTable.Arn}/index/*'
+            - !GetAtt UsersTable.Arn
+            - !Sub '${UsersTable.Arn}/index/*'
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3000
+    noPrependStageInUrl: true
+
+functions:
+  # Auth
+  register:
+    handler: src/handlers/auth.register
+    events:
+      - http:
+          path: /auth/register
+          method: post
+          cors: true
+
+  login:
+    handler: src/handlers/auth.login
+    events:
+      - http:
+          path: /auth/login
+          method: post
+          cors: true
+
+  refreshToken:
+    handler: src/handlers/auth.refreshToken
+    events:
+      - http:
+          path: /auth/refresh
+          method: post
+          cors: true
+
+  # Tasks
+  createTask:
+    handler: src/handlers/tasks.create
+    events:
+      - http:
+          path: /tasks
+          method: post
+          cors: true
+          authorizer: jwtAuthorizer
+
+  listTasks:
+    handler: src/handlers/tasks.list
+    events:
+      - http:
+          path: /tasks
+          method: get
+          cors: true
+          authorizer: jwtAuthorizer
+
+  getTask:
+    handler: src/handlers/tasks.get
+    events:
+      - http:
+          path: /tasks/{taskId}
+          method: get
+          cors: true
+          authorizer: jwtAuthorizer
+
+  updateTask:
+    handler: src/handlers/tasks.update
+    events:
+      - http:
+          path: /tasks/{taskId}
+          method: put
+          cors: true
+          authorizer: jwtAuthorizer
+
+  deleteTask:
+    handler: src/handlers/tasks.delete
+    events:
+      - http:
+          path: /tasks/{taskId}
+          method: delete
+          cors: true
+          authorizer: jwtAuthorizer
+
+  searchTasks:
+    handler: src/handlers/tasks.search
+    events:
+      - http:
+          path: /tasks/search
+          method: get
+          cors: true
+          authorizer: jwtAuthorizer
+
+  # Lambda Authorizer
+  jwtAuthorizer:
+    handler: src/handlers/authorizer.handler
+
+resources:
+  Resources:
+    TasksTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TASKS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: taskId
+            AttributeType: S
+          - AttributeName: status
+            AttributeType: S
+          - AttributeName: dueDate
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: taskId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: StatusIndex
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: status
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: DueDateIndex
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: dueDate
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.USERS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: EmailIndex
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_4XX
+        RestApiId: !Ref ApiGatewayRestApi
+
+    GatewayResponseDefault5XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_5XX
+        RestApiId: !Ref ApiGatewayRestApi
