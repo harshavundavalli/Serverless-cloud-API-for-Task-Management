@@ -7,6 +7,8 @@ const REFRESH_TOKEN_EXPIRY = '7d';
 const generateAccessToken = (payload) =>
   jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 
+// Refresh tokens use a different secret (JWT_SECRET + '-refresh') so that a refresh token
+// cannot be used as an access token, even if an attacker intercepts it.
 const generateRefreshToken = (payload) =>
   jwt.sign(payload, JWT_SECRET + '-refresh', { expiresIn: REFRESH_TOKEN_EXPIRY });
 

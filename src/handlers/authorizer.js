@@ -4,6 +4,10 @@ const logger = require('../utils/logger');
 /**
  * Lambda Authorizer — validates the Bearer token and returns an IAM policy.
  * API Gateway caches the result per token for 5 minutes by default.
+ *
+ * Flow: extract token → verify JWT → return Allow or Deny IAM policy.
+ * The `context` object on an Allow policy is forwarded to the downstream Lambda
+ * as event.requestContext.authorizer, making userId available without a DB lookup.
  */
 exports.handler = async (event) => {
   try {
@@ -19,7 +23,8 @@ exports.handler = async (event) => {
     logger.info('Authorized', { userId: payload.userId });
 
     const policy = generatePolicy(payload.userId, 'Allow', event.methodArn);
-    // Pass userId & email to Lambda via authorizer context
+    // Attach userId and email to the policy context so downstream handlers
+    // can read them from event.requestContext.authorizer without re-verifying the token.
     policy.context = {
       userId: payload.userId,
       email: payload.email,

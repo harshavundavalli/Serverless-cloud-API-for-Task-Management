@@ -17,7 +17,8 @@ const {
 } = require('../utils/response');
 const logger = require('../utils/logger');
 
-// Helper to extract userId from Lambda Authorizer context
+// Extract userId injected by the Lambda Authorizer.
+// The path differs between REST API (authorizer.userId) and HTTP API (authorizer.lambda.userId).
 const getUserId = (event) =>
   event.requestContext?.authorizer?.userId ||
   event.requestContext?.authorizer?.lambda?.userId;

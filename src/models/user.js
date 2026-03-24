@@ -8,6 +8,7 @@ const SALT_ROUNDS = 12;
 
 const UserModel = {
   async findByEmail(email) {
+    // Emails are stored lowercase (see create()), so normalize here for case-insensitive lookup.
     const result = await dynamoDB.send(
       new QueryCommand({
         TableName: TABLE,

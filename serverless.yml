@@ -2,6 +2,9 @@ service: task-management-api
 
 frameworkVersion: '3'
 
+# Automatically load .env file for local development
+useDotenv: true
+
 provider:
   name: aws
   runtime: nodejs18.x
@@ -12,7 +15,9 @@ provider:
   environment:
     TASKS_TABLE: ${self:service}-tasks-${self:provider.stage}
     USERS_TABLE: ${self:service}-users-${self:provider.stage}
-    JWT_SECRET: ${ssm:/task-api/${self:provider.stage}/jwt-secret, 'local-dev-secret-change-in-prod'}
+    # Locally: reads JWT_SECRET from .env file
+    # In prod CI/CD: set JWT_SECRET env var (fetched from SSM before deploy)
+    JWT_SECRET: ${env:JWT_SECRET, 'local-dev-secret-change-in-prod'}
     STAGE: ${self:provider.stage}
   iam:
     role:
