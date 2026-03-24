@@ -71,4 +71,49 @@ describe('POST /auth/login', () => {
     const res = await authHandler.login(makeEvent({ email: 'a@b.com', password: 'wrong' }));
     expect(res.statusCode).toBe(401);
   });
+
+  it('returns 200 with tokens on valid credentials', async () => {
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash('Str0ngPass', 12);
+    _mockSend.mockResolvedValueOnce({ Items: [{ userId: 'u1', email: 'a@b.com', passwordHash: hash, name: 'Alice' }] });
+    const res = await authHandler.login(makeEvent({ email: 'a@b.com', password: 'Str0ngPass' }));
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data).toHaveProperty('accessToken');
+    expect(body.data).toHaveProperty('refreshToken');
+    expect(body.data.user).not.toHaveProperty('passwordHash');
+  });
+});
+
+describe('POST /auth/refresh', () => {
+  beforeEach(() => _mockSend.mockReset());
+
+  it('returns 400 when refreshToken is missing', async () => {
+    const res = await authHandler.refreshToken(makeEvent({}));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 401 for invalid refresh token', async () => {
+    const res = await authHandler.refreshToken(makeEvent({ refreshToken: 'bad.token.here' }));
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 401 when user no longer exists', async () => {
+    const { generateRefreshToken } = require('../src/utils/jwt');
+    const token = generateRefreshToken({ userId: 'u1', email: 'a@b.com' });
+    _mockSend.mockResolvedValueOnce({ Item: undefined });
+    const res = await authHandler.refreshToken(makeEvent({ refreshToken: token }));
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns new accessToken on valid refresh', async () => {
+    const { generateRefreshToken } = require('../src/utils/jwt');
+    const token = generateRefreshToken({ userId: 'u1', email: 'a@b.com' });
+    _mockSend.mockResolvedValueOnce({ Item: { userId: 'u1', email: 'a@b.com' } });
+    const res = await authHandler.refreshToken(makeEvent({ refreshToken: token }));
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data).toHaveProperty('accessToken');
+    expect(body.data.expiresIn).toBe(900);
+  });
 });

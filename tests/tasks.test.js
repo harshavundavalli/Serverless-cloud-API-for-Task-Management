@@ -66,6 +66,74 @@ describe('GET /tasks/{taskId} (get)', () => {
   });
 });
 
+describe('GET /tasks (list)', () => {
+  beforeEach(() => _mockSend.mockReset());
+
+  it('returns list of tasks', async () => {
+    _mockSend.mockResolvedValueOnce({
+      Items: [{ userId: 'user-123', taskId: 'a', title: 'T1', status: 'todo', dueDate: 'none', createdAt: '2024-01-01' }],
+    });
+    const res = await tasksHandler.list(makeEvent());
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].dueDate).toBeNull();
+  });
+
+  it('returns 400 for invalid query params', async () => {
+    const res = await tasksHandler.list(makeEvent({ queryStringParameters: { status: 'invalid_status' } }));
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('PUT /tasks/{taskId} (update)', () => {
+  beforeEach(() => _mockSend.mockReset());
+
+  it('returns 400 when body has no valid fields', async () => {
+    const res = await tasksHandler.update(makeEvent({ pathParameters: { taskId: 'abc' }, body: {} }));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 404 when task not found', async () => {
+    _mockSend.mockResolvedValueOnce({ Item: undefined });
+    const res = await tasksHandler.update(makeEvent({ pathParameters: { taskId: 'abc' }, body: { title: 'New title' } }));
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('updates task and returns 200', async () => {
+    _mockSend
+      .mockResolvedValueOnce({ Item: { userId: 'user-123', taskId: 'abc', title: 'Old', dueDate: 'none' } })
+      .mockResolvedValueOnce({ Attributes: { userId: 'user-123', taskId: 'abc', title: 'New', dueDate: 'none', updatedAt: '2024-01-02' } });
+    const res = await tasksHandler.update(makeEvent({ pathParameters: { taskId: 'abc' }, body: { title: 'New' } }));
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data.title).toBe('New');
+  });
+});
+
+describe('GET /tasks/search', () => {
+  beforeEach(() => _mockSend.mockReset());
+
+  it('returns 400 when q is missing', async () => {
+    const res = await tasksHandler.search(makeEvent());
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns only matching tasks', async () => {
+    _mockSend.mockResolvedValueOnce({
+      Items: [
+        { userId: 'user-123', taskId: 'a', title: 'Buy milk', dueDate: 'none' },
+        { userId: 'user-123', taskId: 'b', title: 'Send email', dueDate: 'none' },
+      ],
+    });
+    const res = await tasksHandler.search(makeEvent({ queryStringParameters: { q: 'milk' } }));
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].title).toBe('Buy milk');
+  });
+});
+
 describe('DELETE /tasks/{taskId}', () => {
   beforeEach(() => _mockSend.mockReset());
 
